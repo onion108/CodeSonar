@@ -1,0 +1,8 @@
+[project]
+name = "codesonar"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "psutil>=7.2.2",
+    "scamp>=0.9.3.2",
+]

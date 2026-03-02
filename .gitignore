@@ -1,0 +1,7 @@
+.venv
+venv
+.idea
+.DS_Store
+*.iml
+__pycache__
+.env
