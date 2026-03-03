@@ -15,15 +15,15 @@ class Conductor:
     POSSIBLE_PROGRESSIONS: ClassVar[dict[str, Progression]] = {
         "*": Progression([
             Chord.major(Notes.F),
-            Chord.major(Notes.G),
+            Chord.seven(Notes.G),
             Chord.minor(Notes.E),
             Chord.minor(Notes.A),
         ]),
         "Am": Progression([
             Chord.minor(Notes.D),
-            Chord.major(Notes.E),
+            Chord.seven(Notes.E),
             Chord.minor(Notes.A),
-            Chord.major(Notes.A),
+            Chord.seven(Notes.A),
         ], "*"),
     }
 

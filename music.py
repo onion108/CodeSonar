@@ -31,6 +31,17 @@ class Chord:
             [0, 2, 4, 5, 7, 9, 11],
             [0.9, 0.1, 0.9, 0.03, 0.9, 0.01, 0.3],
         )
+
+    @classmethod
+    def seven(cls, note: Note) -> 'Chord':
+        return Chord(
+            note.name + "7",
+            note.offset,
+            [0, 7, 16],
+            [0, 2, 4, 5, 7, 9, 10],
+            [0.9, 0.1, 0.9, 0.03, 0.9, 0.01, 0.3],
+        )
+
     @classmethod
     def minor(cls, note: Note) -> 'Chord':
         return Chord(
