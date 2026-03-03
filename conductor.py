@@ -1,3 +1,7 @@
+from typing import ClassVar
+from music import Chord, Notes, Note, Progression
+from scamp.instruments import ScampInstrument
+from sensors import SystemSensor
 import random
 import time
 
@@ -8,47 +12,53 @@ from metronome import Metronome
 
 class Conductor:
 
-    NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    SCALE = [0, 2, 4, 7, 9]  # Pentatonic Major
+    POSSIBLE_PROGRESSIONS: ClassVar[dict[str, Progression]] = {
+        "*": Progression([
+            Chord.major(Notes.F),
+            Chord.major(Notes.G),
+            Chord.minor(Notes.E),
+            Chord.minor(Notes.A),
+        ]),
+        "Am": Progression([
+            Chord.minor(Notes.D),
+            Chord.major(Notes.E),
+            Chord.minor(Notes.A),
+            Chord.major(Notes.A),
+        ], "*"),
+    }
 
-    # 王道进行 IV-V-iii-vi，相对于根音(C)的半音偏移 + 和弦类型
-    # 和弦音程：大调=[0,7,16]（根/五/大十度），小调=[0,7,15]（根/五/小十度）
-    PROGRESSION = [
-        ("IV  F大", 5,  [0, 7, 16]),   # F major
-        ("V   G大", 7,  [0, 7, 16]),   # G major
-        ("iii E小", 4,  [0, 7, 15]),   # E minor
-        ("vi  A小", 9,  [0, 7, 15]),   # A minor
-    ]
-
-    def __init__(self, sensor):
-        self.sensor = sensor
-        self.metro = Metronome()
-        self.session = Session(tempo=self.metro.bpm)
+    def __init__(self, sensor: SystemSensor):
+        self.sensor: SystemSensor = sensor
+        self.metro: Metronome     = Metronome()
+        self.session: Session     = Session(tempo=self.metro.bpm)
+        self.progression: Progression = Conductor.POSSIBLE_PROGRESSIONS["*"]
+        self.prog_idx: int = 0
 
         try:
-            self.pad      = self.session.new_part("Electric Piano 1")
-            self.droplets = self.session.new_part("Vibraphone")
-            self.bass     = self.session.new_part("Fretless Bass")
+            self.pad: ScampInstrument      = self.session.new_part("Electric Piano 1")
+            self.droplets: ScampInstrument = self.session.new_part("Vibraphone")
+            self.bass: ScampInstrument     = self.session.new_part("Fretless Bass")
         except Exception:
-            self.pad      = self.session.new_part("Piano")
-            self.droplets = self.session.new_part("Piano")
-            self.bass     = self.session.new_part("Piano")
+            self.pad: ScampInstrument      = self.session.new_part("Piano")
+            self.droplets: ScampInstrument = self.session.new_part("Piano")
+            self.bass: ScampInstrument     = self.session.new_part("Piano")
 
-        self.root    = 60   # Middle C
-        self.running = True
+        self.root: int     = 60   # Middle C
+        self.running: bool = True
 
         # Smoothed sensor values (written by loop_sensor_update, read everywhere)
-        self.cpu = 0.0
-        self.ram = 0.0
-        self.net = 0.0
+        self.cpu: float = 0.0
+        self.ram: float = 0.0
+        self.net: float = 0.0
 
     # ------------------------------------------------------------------ helpers
 
     def _name(self, midi: int) -> str:
-        return f"{self.NOTE_NAMES[midi % 12]}{midi // 12 - 1}"
+        return f"{Notes.STANDARD_NAMES[midi % 12]}{midi // 12 - 1}"
 
     def _scale_pitch(self, base: int, octave_offset: int = 0) -> int:
-        return base + random.choice(self.SCALE) + octave_offset * 12
+        chord = self.progression.chords[self.prog_idx]
+        return base + chord.root + chord.pick_note() + octave_offset * 12
 
     def _log(self, tag: str, instrument: str, pitch_or_notes, vol: float,
              beats: float, reason: str):
@@ -68,6 +78,27 @@ class Conductor:
             f"音色:{instrument:<14} 音高:{pitch_str:<22} 力度:{vol:.2f} 时值:{beats:.1f}拍 | "
             f"{reason} | CPU={self.cpu:.0%} RAM={self.ram:.0%} NET={self.net:.0%}"
         )
+    def _bar_end(self):
+        prog_idx = self.prog_idx
+        chord = self.progression.chords[prog_idx]
+
+        if prog_idx != len(self.progression.chords)-1:
+            return
+
+        if self.progression.next is not None and self.progression.next in self.POSSIBLE_PROGRESSIONS:
+            self.progression = self.POSSIBLE_PROGRESSIONS[self.progression.next]
+            return
+        else:
+            print(f"[WARN] No progression found for {self.progression.next}; Will fallback to the default progress transition procedure") if self.progression.next is not None else ()
+
+        if random.random() < 0.25:
+            # Try change progression
+            if chord.name in self.POSSIBLE_PROGRESSIONS: 
+                print("Trying to transition into new progression")
+                self.progression = self.POSSIBLE_PROGRESSIONS[chord.name]
+        else:
+            self.progression = self.POSSIBLE_PROGRESSIONS["*"]
+            
 
     # ------------------------------------------------------------------ loops
 
@@ -91,17 +122,21 @@ class Conductor:
             self.session.tempo = self.metro.bpm
 
             if is_downbeat:
+                self.prog_idx = (self.prog_idx + 1) % len(self.progression.chords)
                 print(
                     f"\n{'─'*20} Bar {self.metro.bar_count} | "
-                    f"{self.metro.sig_label()} | BPM={self.metro.bpm:.0f} "
+                    f"{self.metro.sig_label()} | BPM={self.metro.bpm:.0f} | Progression = {self.prog_idx} "
                     f"{'─'*20}"
                 )
 
             wait(1.0)
+            if beat == self.metro.time_sig-1:
+                print("Calling _bar_end")
+                self._bar_end()
 
     def loop_pad(self):
         """
-        Pad: plays one chord per bar, cycling through IV-V-iii-vi progression.
+        Pad: plays one chord per bar.
         Chord changes only on the downbeat (beat 0), never mid-bar.
         """
         while self.running:
@@ -109,17 +144,18 @@ class Conductor:
             base = self.root - 12  # C3
 
             # Pick chord from progression based on bar index (cycles every 4 bars)
-            prog_idx = (self.metro.bar_count - 1) % len(self.PROGRESSION)
-            chord_name, root_offset, intervals = self.PROGRESSION[prog_idx]
-            chord_root = base + root_offset
-            notes = [chord_root + i for i in intervals]
+            prog_idx = self.prog_idx
+            # chord_name, root_offset, intervals = self.PROGRESSION[prog_idx]
+            chord = self.progression.chords[prog_idx]
+            chord_root = base + chord.root
+            notes = [chord_root + i for i in chord.intervals]
 
             vol = 0.28 + self.cpu * 0.18
             sustain = ts * 0.92
             gap     = ts - sustain
 
             reason = (
-                f"{chord_name} (Bar {self.metro.bar_count}，共{ts}拍)"
+                f"{chord.name} (Bar {self.metro.bar_count}，共{ts}拍)"
             )
             self._log("PAD", "ElecPiano", notes, vol, ts, reason)
             self.pad.play_chord(notes, vol, sustain, blocking=True)

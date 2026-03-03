@@ -12,11 +12,11 @@ class Metronome:
     BPM_MAX = 82.0
 
     def __init__(self):
-        self.bpm = 60.0
-        self._target_bpm = 60.0
-        self.time_sig = 4
-        self.bar_count = 0
-        self.beat_in_bar = 0       # 0-indexed within current bar
+        self.bpm: float = 60.0
+        self._target_bpm: float = 60.0
+        self.time_sig: int = 4
+        self.bar_count: int = 0
+        self.beat_in_bar: int = 0       # 0-indexed within current bar
 
     # ------------------------------------------------------------------
     # Called once per beat by loop_clock
